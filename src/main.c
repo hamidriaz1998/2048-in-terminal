@@ -1,5 +1,6 @@
 #include "board.h"
 #include "draw.h"
+#include "history.h"
 #include "save.h"
 #include <ncurses.h>
 #include <signal.h>
@@ -12,6 +13,7 @@
 static sigset_t all_signals;
 static Board board;
 static Stats stats = {.auto_save = false, .game_over = false, .board_size = 4};
+static History history;
 
 static int show_menu(void);
 
@@ -116,12 +118,18 @@ int main(void) {
   board_size = show_menu();
   stats.board_size = board_size;
 
+  // Initialize history
+  history_init(&history);
+
   if (load_game(&board, &stats) != 0 || board.size != board_size) {
     board_start(&board, board_size);
     stats.score = 0;
     stats.max_score = 0;
     stats.board_size = board_size;
   }
+
+  // Save initial state to history
+  history_save_state(&history, &board, &stats);
 
   setup_screen();
   if (init_win(board_size) == WIN_TOO_SMALL) {
@@ -173,7 +181,24 @@ int main(void) {
       stats.score = 0;
       stats.game_over = false;
       board_start(&board, stats.board_size);
+      history_clear(&history);
+      history_save_state(&history, &board, &stats);
       draw(&board, &stats);
+      goto next;
+
+    /* undo */
+    case 'u':
+      if (history_undo(&history, &board, &stats)) {
+        draw(&board, &stats);
+      }
+      goto next;
+
+    /* redo */
+    case 'U':
+    case 'y':
+      if (history_redo(&history, &board, &stats)) {
+        draw(&board, &stats);
+      }
       goto next;
 
     /* toggle animations */
@@ -202,6 +227,9 @@ int main(void) {
     stats.points = board_slide(&board, &new_board, &moves, dir);
 
     if (stats.points >= 0) {
+      // Save state before making the move
+      history_save_state(&history, &board, &stats);
+
       draw(NULL, &stats); /* show +points */
       if (show_animations)
         draw_slide(&board, &moves, dir);
