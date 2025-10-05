@@ -45,7 +45,7 @@ int init_win(int board_size) {
   const int bheight = TILE_HEIGHT * board_size + 2;
   const int swidth = 13;
   const int min_sheight =
-      19; // Minimum height to show all menu options including undo/redo
+      23; // Minimum height to show all menu options including save/load
   const int sheight = (bheight - 2) > min_sheight ? (bheight - 2) : min_sheight;
 
   if (board_win) {
@@ -177,25 +177,39 @@ static void draw_stats(const Stats *stats) {
   mvwprintw(stats_win, 2, 1, "%8d", stats->score);
   mvwprintw(stats_win, 5, 1, "%8d", stats->max_score);
   mvwprintw(stats_win, 12, 2, "ndo");
-  mvwprintw(stats_win, 13, 2, "edo(y)");
-  mvwprintw(stats_win, 14, 2, "nimations");
-  mvwprintw(stats_win, 15, 2, "estart");
-  mvwprintw(stats_win, 16, 2, "uit");
+  mvwprintw(stats_win, 13, 1, "Redo");
+  mvwprintw(stats_win, 14, 2, "ave");
+  mvwprintw(stats_win, 15, 1, "Load");
+  mvwprintw(stats_win, 16, 2, "nimations");
+  mvwprintw(stats_win, 17, 2, "estart");
+  mvwprintw(stats_win, 18, 2, "uit");
 
   wattron(stats_win, COLOR_PAIR(4));
   mvwaddch(stats_win, 12, 1, 'U');
 
   wattron(stats_win, COLOR_PAIR(6));
-  mvwaddch(stats_win, 13, 1, 'R');
+  // mvwaddch(stats_win, 13, 1, 'R');
+  mvwaddch(stats_win, 13, 5, '(');
+  mvwaddch(stats_win, 13, 6, 'y');
+  mvwaddch(stats_win, 13, 7, ')');
 
-  wattron(stats_win, COLOR_PAIR(5));
-  mvwaddch(stats_win, 14, 1, 'A');
+  wattron(stats_win, COLOR_PAIR(2));
+  mvwaddch(stats_win, 14, 1, 'S');
 
   wattron(stats_win, COLOR_PAIR(3));
-  mvwaddch(stats_win, 15, 1, 'R');
+  // mvwaddch(stats_win, 15, 1, 'L');
+  mvwaddch(stats_win, 15, 5, '(');
+  mvwaddch(stats_win, 15, 6, 'G');
+  mvwaddch(stats_win, 15, 7, ')');
+
+  wattron(stats_win, COLOR_PAIR(5));
+  mvwaddch(stats_win, 16, 1, 'A');
+
+  wattron(stats_win, COLOR_PAIR(3));
+  mvwaddch(stats_win, 17, 1, 'R');
 
   wattron(stats_win, COLOR_PAIR(7));
-  mvwaddch(stats_win, 16, 1, 'Q');
+  mvwaddch(stats_win, 18, 1, 'Q');
 }
 
 static void draw_tile(int top, int left, int val) {

@@ -43,4 +43,18 @@ typedef struct history {
   int size;
 } History;
 
+/* Enhanced save file structure with version and metadata */
+typedef struct save_data {
+  int version;          /* Save file format version */
+  long timestamp;       /* When the game was saved */
+  int play_time;        /* Total play time in seconds */
+  Board board;          /* Current board state */
+  Stats stats;          /* Current game statistics */
+  History history;      /* Undo/redo history */
+  char description[64]; /* Optional save description */
+} SaveData;
+
+#define SAVE_VERSION 1
+#define MAX_SAVE_SLOTS 10
+
 #endif

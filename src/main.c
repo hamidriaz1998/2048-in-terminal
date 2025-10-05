@@ -5,6 +5,7 @@
 #include <ncurses.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -16,10 +17,13 @@ static Stats stats = {.auto_save = false, .game_over = false, .board_size = 4};
 static History history;
 
 static int show_menu(void);
+static void show_save_menu(void);
+static void show_load_menu(void);
+static void show_save_status(const char *message);
 
 static void sig_handler(int __attribute__((unused)) sig_no) {
   sigprocmask(SIG_BLOCK, &all_signals, NULL);
-  save_game(&board, &stats);
+  save_game(&board, &stats, &history);
   endwin();
   exit(0);
 }
@@ -121,7 +125,7 @@ int main(void) {
   // Initialize history
   history_init(&history);
 
-  if (load_game(&board, &stats) != 0 || board.size != board_size) {
+  if (load_game(&board, &stats, &history) != 0 || board.size != board_size) {
     board_start(&board, board_size);
     stats.score = 0;
     stats.max_score = 0;
@@ -201,6 +205,53 @@ int main(void) {
       }
       goto next;
 
+    /* save game menu */
+    case 's':
+    case 'S':
+      show_save_menu();
+      setup_screen();
+      if (init_win(stats.board_size) == WIN_TOO_SMALL) {
+        terminal_too_small = true;
+        print_too_small();
+      } else {
+        terminal_too_small = false;
+        draw(&board, &stats);
+      }
+      goto next;
+
+    /* load game menu */
+    case 'g':
+    case 'G':
+      show_load_menu();
+      setup_screen();
+      if (init_win(stats.board_size) == WIN_TOO_SMALL) {
+        terminal_too_small = true;
+        print_too_small();
+      } else {
+        terminal_too_small = false;
+        draw(&board, &stats);
+      }
+      goto next;
+
+    /* quick save */
+    case KEY_F(5):
+      if (quick_save(&board, &stats, &history) == 0) {
+        show_save_status("Quick saved to slot 0");
+      } else {
+        show_save_status("Quick save failed");
+      }
+      goto next;
+
+    /* quick load */
+    case KEY_F(9):
+      if (quick_load(&board, &stats, &history) == 0) {
+        show_save_status("Quick loaded from slot 0");
+        draw(&board, &stats);
+      } else {
+        show_save_status("Quick load failed");
+      }
+      goto next;
+
     /* toggle animations */
     case 'a':
     case 'A':
@@ -262,6 +313,133 @@ int main(void) {
     stats.score = 0;
   }
 
-  save_game(&board, &stats);
+  save_game(&board, &stats, &history);
   return 0;
+}
+
+static void show_save_menu(void) {
+  clear();
+  int width, height;
+  getmaxyx(stdscr, height, width);
+  (void)width;
+  (void)height; // Suppress unused variable warnings
+
+  attron(COLOR_PAIR(2) | A_BOLD);
+  mvprintw(2, 2, "Save Game");
+  attroff(COLOR_PAIR(2) | A_BOLD);
+
+  attron(COLOR_PAIR(1));
+  mvprintw(4, 2, "Enter slot number (0-9) or ESC to cancel:");
+  refresh();
+
+  int ch = getch();
+  if (ch >= '0' && ch <= '9') {
+    int slot = ch - '0';
+    char description[64];
+
+    mvprintw(6, 2, "Enter description (optional): ");
+    echo();
+    curs_set(1);
+
+    if (getnstr(description, 63) == ERR) {
+      strcpy(description, "Manual Save");
+    }
+
+    noecho();
+    curs_set(0);
+
+    if (save_game_slot(&board, &stats, &history, slot, description) == 0) {
+      mvprintw(8, 2, "Game saved to slot %d successfully!", slot);
+    } else {
+      mvprintw(8, 2, "Failed to save game to slot %d", slot);
+    }
+
+    mvprintw(10, 2, "Press any key to continue...");
+    refresh();
+    getch();
+  }
+}
+
+static void show_load_menu(void) {
+  clear();
+  int width, height;
+  getmaxyx(stdscr, height, width);
+  (void)width;
+  (void)height; // Suppress unused variable warnings
+
+  attron(COLOR_PAIR(2) | A_BOLD);
+  mvprintw(2, 2, "Load Game");
+  attroff(COLOR_PAIR(2) | A_BOLD);
+
+  // List available saves
+  char descriptions[MAX_SAVE_SLOTS][64];
+  long timestamps[MAX_SAVE_SLOTS];
+
+  int save_count = list_save_slots(descriptions, timestamps);
+
+  if (save_count == 0) {
+    attron(COLOR_PAIR(7));
+    mvprintw(4, 2, "No saved games found.");
+    attroff(COLOR_PAIR(7));
+    mvprintw(6, 2, "Press any key to continue...");
+    refresh();
+    getch();
+    return;
+  }
+
+  attron(COLOR_PAIR(1));
+  mvprintw(4, 2, "Available saves:");
+
+  for (int i = 0; i < MAX_SAVE_SLOTS; i++) {
+    if (descriptions[i][0] != '\0') {
+      char time_str[64];
+      if (timestamps[i] > 0) {
+        struct tm *tm_info = localtime(&timestamps[i]);
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", tm_info);
+      } else {
+        strcpy(time_str, "Unknown time");
+      }
+
+      mvprintw(6 + i, 4, "%d: %s (%s)", i, descriptions[i], time_str);
+    }
+  }
+
+  mvprintw(18, 2, "Enter slot number (0-9) or ESC to cancel:");
+  refresh();
+
+  int ch = getch();
+  if (ch >= '0' && ch <= '9') {
+    int slot = ch - '0';
+
+    if (descriptions[slot][0] == '\0') {
+      mvprintw(20, 2, "Slot %d is empty!", slot);
+    } else if (load_game_slot(&board, &stats, &history, slot) == 0) {
+      mvprintw(20, 2, "Game loaded from slot %d successfully!", slot);
+    } else {
+      mvprintw(20, 2, "Failed to load game from slot %d", slot);
+    }
+
+    mvprintw(22, 2, "Press any key to continue...");
+    refresh();
+    getch();
+  }
+}
+
+static void show_save_status(const char *message) {
+  int width, height;
+  getmaxyx(stdscr, height, width);
+  (void)width; // Suppress unused variable warning
+
+  // Show message at bottom of screen
+  attron(COLOR_PAIR(3) | A_BOLD);
+  mvprintw(height - 2, 2, "%s", message);
+  attroff(COLOR_PAIR(3) | A_BOLD);
+  refresh();
+
+  // Brief pause to show message
+  usleep(1000000); // 1 second
+
+  // Clear the message
+  mvprintw(height - 2, 2, "%*s", (int)strlen(message), "");
+  refresh();
 }

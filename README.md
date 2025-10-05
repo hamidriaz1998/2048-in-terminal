@@ -6,14 +6,36 @@ Terminal-based clone of [the 2048 game](https://play2048.co/)
 
 ## Controls
 
+### Game Movement
+
 - **Arrow keys / hjkl**: Move tiles
+
+### Undo/Redo
+
 - **u**: Undo last move
 - **U / y**: Redo last undone move
+
+### Save/Load
+
+- **s**: Save game (manual save with description)
+- **g**: Load game (choose from saved games)
+- **F5**: Quick save (saves to slot 0)
+- **F9**: Quick load (loads from slot 0)
+
+### Other
+
 - **r**: Restart game
 - **a**: Toggle animations
 - **q**: Quit game
 
-The game supports up to 50 levels of undo/redo history.
+## Features
+
+- **Undo/Redo**: Up to 50 levels of undo/redo history
+- **Multiple Save Slots**: 10 save slots (0-9) with custom descriptions
+- **Auto-save**: Game automatically saves on exit and resumes on startup
+- **Save History**: Undo/redo history is preserved in save files
+- **Save Metadata**: Each save includes timestamp and description
+- **Quick Save/Load**: Instant save/load using F5/F9 keys
 
 ---
 
