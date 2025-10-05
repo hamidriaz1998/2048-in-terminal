@@ -27,4 +27,11 @@ void draw(const Board *board, const Stats *stats);
  * each sliding tile and 0 for static and empty tiles */
 void draw_slide(const Board *board, const Board *moves, Dir dir);
 
+/* Draw undo/redo animation between two board states */
+void draw_undo_redo(const Board *from_board, const Board *to_board,
+                    bool is_undo);
+
+/* Display undo/redo status message temporarily */
+void draw_undo_redo_status(const char *action);
+
 #endif

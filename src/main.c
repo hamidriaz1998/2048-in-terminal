@@ -192,16 +192,30 @@ int main(void) {
 
     /* undo */
     case 'u':
-      if (history_undo(&history, &board, &stats)) {
-        draw(&board, &stats);
+      if (history_can_undo(&history)) {
+        Board old_board = board;
+
+        if (history_undo(&history, &board, &stats)) {
+          if (show_animations) {
+            draw_undo_redo(&old_board, &board, true);
+          }
+          draw(&board, &stats);
+        }
       }
       goto next;
 
     /* redo */
     case 'U':
     case 'y':
-      if (history_redo(&history, &board, &stats)) {
-        draw(&board, &stats);
+      if (history_can_redo(&history)) {
+        Board old_board = board;
+
+        if (history_redo(&history, &board, &stats)) {
+          if (show_animations) {
+            draw_undo_redo(&old_board, &board, false);
+          }
+          draw(&board, &stats);
+        }
       }
       goto next;
 

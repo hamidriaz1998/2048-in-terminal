@@ -30,12 +30,15 @@ Terminal-based clone of [the 2048 game](https://play2048.co/)
 
 ## Features
 
-- **Undo/Redo**: Up to 50 levels of undo/redo history
+- **Undo/Redo**: Up to 50 levels of undo/redo history with slow, visible animations
+- **Animated Transitions**: Dramatic visual effects for undo (blue) and redo (green) operations with proper timing
 - **Multiple Save Slots**: 10 save slots (0-9) with custom descriptions
 - **Auto-save**: Game automatically saves on exit and resumes on startup
 - **Save History**: Undo/redo history is preserved in save files
 - **Save Metadata**: Each save includes timestamp and description
 - **Quick Save/Load**: Instant save/load using F5/F9 keys
+- **Toggle Animations**: Press 'a' to enable/disable all animations including undo/redo
+- **Visible Animation Speed**: Undo/redo animations are intentionally slower (0.2s per step) for clear visibility
 
 ---
 

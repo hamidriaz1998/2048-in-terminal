@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 /* sliding tile */
 typedef struct tile {
@@ -35,6 +36,14 @@ static const NCURSES_ATTR_T tile_attr[] = {
 
 static const struct timespec tick_time = {.tv_sec = 0, .tv_nsec = 15000000};
 static const struct timespec end_move_time = {.tv_sec = 0, .tv_nsec = 3000000};
+
+// Undo/Redo animation timing - much slower for visibility
+static const struct timespec undo_step_time = {
+    .tv_sec = 0, .tv_nsec = 200000000}; // 0.2 seconds per step
+static const struct timespec undo_pause_time = {
+    .tv_sec = 0, .tv_nsec = 400000000}; // 0.4 seconds between phases
+static const struct timespec undo_final_pause = {
+    .tv_sec = 0, .tv_nsec = 600000000}; // 0.6 seconds at end
 
 static WINDOW *board_win;
 static WINDOW *stats_win;
@@ -177,9 +186,9 @@ static void draw_stats(const Stats *stats) {
   mvwprintw(stats_win, 2, 1, "%8d", stats->score);
   mvwprintw(stats_win, 5, 1, "%8d", stats->max_score);
   mvwprintw(stats_win, 12, 2, "ndo");
-  mvwprintw(stats_win, 13, 1, "Redo");
+  mvwprintw(stats_win, 13, 2, "edo(");
   mvwprintw(stats_win, 14, 2, "ave");
-  mvwprintw(stats_win, 15, 1, "Load");
+  mvwprintw(stats_win, 15, 2, "oad(");
   mvwprintw(stats_win, 16, 2, "nimations");
   mvwprintw(stats_win, 17, 2, "estart");
   mvwprintw(stats_win, 18, 2, "uit");
@@ -188,8 +197,7 @@ static void draw_stats(const Stats *stats) {
   mvwaddch(stats_win, 12, 1, 'U');
 
   wattron(stats_win, COLOR_PAIR(6));
-  // mvwaddch(stats_win, 13, 1, 'R');
-  mvwaddch(stats_win, 13, 5, '(');
+  mvwaddch(stats_win, 13, 1, 'R');
   mvwaddch(stats_win, 13, 6, 'y');
   mvwaddch(stats_win, 13, 7, ')');
 
@@ -197,10 +205,9 @@ static void draw_stats(const Stats *stats) {
   mvwaddch(stats_win, 14, 1, 'S');
 
   wattron(stats_win, COLOR_PAIR(3));
-  // mvwaddch(stats_win, 15, 1, 'L');
-  mvwaddch(stats_win, 15, 5, '(');
-  mvwaddch(stats_win, 15, 6, 'G');
-  mvwaddch(stats_win, 15, 7, ')');
+  mvwaddch(stats_win, 15, 1, 'L');
+  mvwaddch(stats_win, 15, 5, 'G');
+  mvwaddch(stats_win, 15, 6, ')');
 
   wattron(stats_win, COLOR_PAIR(5));
   mvwaddch(stats_win, 16, 1, 'A');
@@ -325,6 +332,179 @@ void draw_slide(const Board *board, const Board *moves, Dir dir) {
     nanosleep(&tick_time, NULL);
   }
   nanosleep(&end_move_time, NULL);
+}
+
+static void draw_tile_with_attr(int top, int left, int val,
+                                NCURSES_ATTR_T attr) {
+  int right = left + TILE_WIDTH - 1;
+  int bottom = top + TILE_HEIGHT - 1;
+  int center = (top + bottom) / 2;
+
+  /* draw empty tile */
+  if (val == 0) {
+    wattrset(board_win, COLOR_PAIR(1));
+    for (int y = top; y <= bottom; y++)
+      mvwprintw(board_win, y, left, "%s", empty_tile_str);
+    return;
+  }
+
+  wattrset(board_win, attr);
+
+  /* erase tile except it's border */
+  for (int y = top + 1; y < bottom; y++)
+    mvwprintw(board_win, y, left + 1, "%s", tile_str[0]);
+
+  /* draw corners */
+  mvwaddch(board_win, top, left, ACS_ULCORNER);
+  mvwaddch(board_win, top, right, ACS_URCORNER);
+  mvwaddch(board_win, bottom, left, ACS_LLCORNER);
+  mvwaddch(board_win, bottom, right, ACS_LRCORNER);
+
+  /* draw lines */
+  mvwhline(board_win, top, left + 1, ACS_HLINE, TILE_WIDTH - 2);
+  mvwhline(board_win, bottom, left + 1, ACS_HLINE, TILE_WIDTH - 2);
+  mvwvline(board_win, top + 1, left, ACS_VLINE, TILE_HEIGHT - 2);
+  mvwvline(board_win, top + 1, right, ACS_VLINE, TILE_HEIGHT - 2);
+
+  /* draw number */
+  mvwprintw(board_win, center, left + 1, "%s", tile_str[val]);
+}
+
+void draw_undo_redo(const Board *from_board, const Board *to_board,
+                    bool is_undo) {
+  if (!board_win)
+    return;
+
+  // Show status message at start of animation
+  if (stats_win) {
+    wattron(stats_win, COLOR_PAIR(7) | A_BOLD);
+    mvwprintw(stats_win, 7, 1, "%-10s", is_undo ? "UNDO" : "REDO");
+    wattroff(stats_win, COLOR_PAIR(7) | A_BOLD);
+    wrefresh(stats_win);
+  }
+
+  // Draw the starting state
+  for (int y = 0; y < from_board->size; y++) {
+    for (int x = 0; x < from_board->size; x++) {
+      int yc = y * TILE_HEIGHT + 1;
+      int xc = x * TILE_WIDTH + 1;
+      draw_tile(yc, xc, from_board->tiles[y][x]);
+    }
+  }
+  wrefresh(board_win);
+  nanosleep(&undo_pause_time, NULL);
+
+  // Create smooth transition by highlighting changed tiles
+  for (int step = 1; step <= 6; step++) {
+    for (int y = 0; y < from_board->size; y++) {
+      for (int x = 0; x < from_board->size; x++) {
+        int from_val = from_board->tiles[y][x];
+        int to_val = to_board->tiles[y][x];
+        int yc = y * TILE_HEIGHT + 1;
+        int xc = x * TILE_WIDTH + 1;
+
+        if (from_val != to_val) {
+          if (step <= 3) {
+            // First half: highlight old value with increasing intensity
+            if (from_val != 0) {
+              NCURSES_ATTR_T attr;
+              if (is_undo) {
+                if (step == 1)
+                  attr = COLOR_PAIR(4) | A_BOLD;
+                else if (step == 2)
+                  attr = COLOR_PAIR(4) | A_BOLD | A_REVERSE;
+                else
+                  attr = COLOR_PAIR(4) | A_BOLD | A_BLINK;
+              } else {
+                if (step == 1)
+                  attr = COLOR_PAIR(3) | A_BOLD;
+                else if (step == 2)
+                  attr = COLOR_PAIR(3) | A_BOLD | A_REVERSE;
+                else
+                  attr = COLOR_PAIR(3) | A_BOLD | A_BLINK;
+              }
+              draw_tile_with_attr(yc, xc, from_val, attr);
+            } else {
+              draw_tile(yc, xc, 0);
+            }
+          } else {
+            // Second half: fade in new value with decreasing intensity
+            if (to_val != 0) {
+              NCURSES_ATTR_T attr;
+              if (is_undo) {
+                if (step == 4)
+                  attr = COLOR_PAIR(4) | A_BOLD | A_BLINK;
+                else if (step == 5)
+                  attr = COLOR_PAIR(4) | A_BOLD;
+                else
+                  attr = tile_attr[to_val];
+              } else {
+                if (step == 4)
+                  attr = COLOR_PAIR(3) | A_BOLD | A_BLINK;
+                else if (step == 5)
+                  attr = COLOR_PAIR(3) | A_BOLD;
+                else
+                  attr = tile_attr[to_val];
+              }
+              draw_tile_with_attr(yc, xc, to_val, attr);
+            } else {
+              draw_tile(yc, xc, 0);
+            }
+          }
+        } else {
+          // Unchanged tile - draw normally with subtle dimming in middle steps
+          if (from_val != 0) {
+            NCURSES_ATTR_T attr = (step == 3 || step == 4)
+                                      ? (tile_attr[from_val] | A_DIM)
+                                      : tile_attr[from_val];
+            draw_tile_with_attr(yc, xc, from_val, attr);
+          } else {
+            draw_tile(yc, xc, 0);
+          }
+        }
+      }
+    }
+    wrefresh(board_win);
+    if (step == 3) {
+      nanosleep(&undo_pause_time, NULL); // Longer pause between phases
+    } else {
+      nanosleep(&undo_step_time, NULL); // Standard step timing
+    }
+  }
+
+  // Final draw with normal attributes
+  for (int y = 0; y < to_board->size; y++) {
+    for (int x = 0; x < to_board->size; x++) {
+      int yc = y * TILE_HEIGHT + 1;
+      int xc = x * TILE_WIDTH + 1;
+      draw_tile(yc, xc, to_board->tiles[y][x]);
+    }
+  }
+  wrefresh(board_win);
+
+  // Clear status message after animation
+  if (stats_win) {
+    mvwprintw(stats_win, 7, 1, "          ");
+    wrefresh(stats_win);
+  }
+
+  nanosleep(&undo_final_pause, NULL); // Final pause to appreciate the result
+}
+
+void draw_undo_redo_status(const char *action) {
+  if (!stats_win)
+    return;
+
+  wattron(stats_win, COLOR_PAIR(7) | A_BOLD);
+  mvwprintw(stats_win, 7, 1, "%-10s", action);
+  wattroff(stats_win, COLOR_PAIR(7) | A_BOLD);
+  wrefresh(stats_win);
+
+  // Brief non-blocking display
+  struct timespec short_pause = {.tv_sec = 0, .tv_nsec = 500000000};
+  nanosleep(&short_pause, NULL);
+  mvwprintw(stats_win, 7, 1, "          ");
+  wrefresh(stats_win);
 }
 
 static int sort_left(const void *l, const void *r) {
