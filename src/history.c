@@ -74,3 +74,11 @@ bool history_can_undo(const History *history) { return history->current > 0; }
 bool history_can_redo(const History *history) {
   return history->current < history->size - 1;
 }
+
+int history_undo_count(const History *history) {
+  return history->current;
+}
+
+int history_redo_count(const History *history) {
+  return history->size - history->current - 1;
+}

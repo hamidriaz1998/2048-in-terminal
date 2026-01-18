@@ -25,4 +25,10 @@ bool history_can_undo(const History *history);
 /* Check if redo is possible */
 bool history_can_redo(const History *history);
 
+/* Get number of undo steps available */
+int history_undo_count(const History *history);
+
+/* Get number of redo steps available */
+int history_redo_count(const History *history);
+
 #endif

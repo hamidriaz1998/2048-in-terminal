@@ -136,6 +136,7 @@ int main(void) {
   history_save_state(&history, &board, &stats);
 
   setup_screen();
+  set_history_display(&history);
   if (init_win(board_size) == WIN_TOO_SMALL) {
     terminal_too_small = true;
     print_too_small();

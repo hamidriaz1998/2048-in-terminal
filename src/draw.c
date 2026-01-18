@@ -1,4 +1,5 @@
 #include "draw.h"
+#include "history.h"
 #include <ncurses.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -45,6 +46,12 @@ static const struct timespec undo_pause_time = {
 
 static WINDOW *board_win;
 static WINDOW *stats_win;
+static const History *current_history = NULL;
+
+// Set the history pointer for display
+void set_history_display(const History *history) {
+  current_history = history;
+}
 
 int init_win(int board_size) {
 
@@ -69,6 +76,13 @@ int init_win(int board_size) {
   int scr_width, scr_height;
   getmaxyx(stdscr, scr_height, scr_width);
 
+  // Check if terminal is too small
+  if (bheight > scr_height || bwidth > scr_width) {
+    clear();
+    refresh();
+    return WIN_TOO_SMALL;
+  }
+
   int btop = (scr_height - bheight) / 2;
   int stop = btop + 1;
 
@@ -78,9 +92,6 @@ int init_win(int board_size) {
   else
     bleft = 0;
   int sleft = bleft + bwidth + 1;
-
-  if (bheight > scr_height || bwidth > scr_width)
-    return WIN_TOO_SMALL;
 
   board_win = newwin(bheight, bwidth, btop, bleft);
   stats_win = newwin(sheight, swidth, stop, sleft);
@@ -114,24 +125,79 @@ void setup_screen(void) {
 }
 
 void print_too_small(void) {
-  static const char *msg = "TERMINAL TOO SMALL";
-  static int mlen = 0;
-  if (!mlen)
-    mlen = strlen(msg);
-
   int width, height;
   getmaxyx(stdscr, height, width);
-  int x = (width - mlen) / 2;
-  x = x >= 0 ? x : 0;
-  int y = height / 2;
-  mvprintw(y, x, "%s", msg);
+
+  // Clear and draw centered message
+  clear();
+  attron(COLOR_PAIR(7) | A_BOLD);
+
+  const char *line1 = "Terminal is too small";
+  const char *line2 = "Please resize your terminal";
+  const char *line3 = "Press any key to try again";
+
+  int y = height / 2 - 1;
+  int x1 = (width - strlen(line1)) / 2;
+  int x2 = (width - strlen(line2)) / 2;
+  int x3 = (width - strlen(line3)) / 2;
+
+  if (y >= 0)
+    mvprintw(y, x1 >= 0 ? x1 : 0, "%s", line1);
+  if (y + 1 < height)
+    mvprintw(y + 1, x2 >= 0 ? x2 : 0, "%s", line2);
+  if (y + 3 < height) {
+    attron(COLOR_PAIR(3) | A_DIM);
+    mvprintw(y + 3, x3 >= 0 ? x3 : 0, "%s", line3);
+    attroff(COLOR_PAIR(3) | A_DIM);
+  }
+
+  attroff(COLOR_PAIR(7) | A_BOLD);
   refresh();
 }
 
 static void draw_stats(const Stats *stats);
 static void draw_board(const Board *board);
-/* 'top' and 'left' are window coords of upper-left tile's corner */
 static void draw_tile(int top, int left, int val);
+
+void draw_history_info(const History *history) {
+  if (!stats_win)
+    return;
+
+  // Use passed history or the static one
+  const History *h = history ? history : current_history;
+  if (!h)
+    return;
+
+  int undo_count = history_undo_count(h);
+  int redo_count = history_redo_count(h);
+
+  // Display undo/redo info at position row 8-9
+  wattron(stats_win, COLOR_PAIR(1) | A_DIM);
+  mvwprintw(stats_win, 8, 1, "History:");
+  wattroff(stats_win, A_DIM);
+
+  // Undo count
+  if (undo_count > 0) {
+    wattron(stats_win, COLOR_PAIR(4) | A_BOLD);
+    mvwprintw(stats_win, 9, 1, "[u%d]", undo_count);
+    wattroff(stats_win, A_BOLD);
+  } else {
+    wattron(stats_win, COLOR_PAIR(1) | A_DIM);
+    mvwprintw(stats_win, 9, 1, "[u-]");
+    wattroff(stats_win, A_DIM);
+  }
+
+  // Redo count
+  if (redo_count > 0) {
+    wattron(stats_win, COLOR_PAIR(3) | A_BOLD);
+    mvwprintw(stats_win, 9, 6, "[r%d]", redo_count);
+    wattroff(stats_win, A_BOLD);
+  } else {
+    wattron(stats_win, COLOR_PAIR(1) | A_DIM);
+    mvwprintw(stats_win, 9, 6, "[r-]");
+    wattroff(stats_win, A_DIM);
+  }
+}
 
 void draw(const Board *board, const Stats *stats) {
   if (board) {
@@ -146,6 +212,7 @@ void draw(const Board *board, const Stats *stats) {
   }
   if (stats) {
     draw_stats(stats);
+    draw_history_info(NULL);  // Use current_history set via set_history_display
     wrefresh(stats_win);
   }
 }
@@ -186,43 +253,43 @@ static void draw_stats(const Stats *stats) {
 
   // Keybindings section with cleaner layout
   wattron(stats_win, COLOR_PAIR(1) | A_DIM);
-  mvwprintw(stats_win, 10, 1, "Keys:");
+  mvwprintw(stats_win, 11, 1, "Keys:");
   wattroff(stats_win, A_DIM);
 
   wattron(stats_win, COLOR_PAIR(4) | A_BOLD);
-  mvwprintw(stats_win, 11, 1, "u");
+  mvwprintw(stats_win, 12, 1, "u");
   wattron(stats_win, COLOR_PAIR(1));
-  mvwprintw(stats_win, 11, 3, "Undo");
+  mvwprintw(stats_win, 12, 3, "Undo");
 
   wattron(stats_win, COLOR_PAIR(3) | A_BOLD);
-  mvwprintw(stats_win, 12, 1, "U/y");
+  mvwprintw(stats_win, 13, 1, "U/y");
   wattron(stats_win, COLOR_PAIR(1));
-  mvwprintw(stats_win, 12, 5, "Redo");
+  mvwprintw(stats_win, 13, 5, "Redo");
 
   wattron(stats_win, COLOR_PAIR(2) | A_BOLD);
-  mvwprintw(stats_win, 13, 1, "s");
+  mvwprintw(stats_win, 14, 1, "s");
   wattron(stats_win, COLOR_PAIR(1));
-  mvwprintw(stats_win, 13, 3, "Save");
+  mvwprintw(stats_win, 14, 3, "Save");
 
   wattron(stats_win, COLOR_PAIR(3) | A_BOLD);
-  mvwprintw(stats_win, 14, 1, "g");
+  mvwprintw(stats_win, 15, 1, "g");
   wattron(stats_win, COLOR_PAIR(1));
-  mvwprintw(stats_win, 14, 3, "Load");
+  mvwprintw(stats_win, 15, 3, "Load");
 
   wattron(stats_win, COLOR_PAIR(5) | A_BOLD);
-  mvwprintw(stats_win, 15, 1, "a");
+  mvwprintw(stats_win, 16, 1, "a");
   wattron(stats_win, COLOR_PAIR(1));
-  mvwprintw(stats_win, 15, 3, "Animate");
+  mvwprintw(stats_win, 16, 3, "Animate");
 
   wattron(stats_win, COLOR_PAIR(6) | A_BOLD);
-  mvwprintw(stats_win, 16, 1, "r");
+  mvwprintw(stats_win, 17, 1, "r");
   wattron(stats_win, COLOR_PAIR(1));
-  mvwprintw(stats_win, 16, 3, "Restart");
+  mvwprintw(stats_win, 17, 3, "Restart");
 
   wattron(stats_win, COLOR_PAIR(7) | A_BOLD);
-  mvwprintw(stats_win, 17, 1, "q");
+  mvwprintw(stats_win, 18, 1, "q");
   wattron(stats_win, COLOR_PAIR(1));
-  mvwprintw(stats_win, 17, 3, "Quit");
+  mvwprintw(stats_win, 18, 3, "Quit");
 }
 
 static void draw_tile(int top, int left, int val) {

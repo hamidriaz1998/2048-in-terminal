@@ -20,8 +20,14 @@ int init_win(int board_size);
 /* Print the 'TERMINAL IS TOO SMALL' message */
 void print_too_small(void);
 
+/* Set history pointer for display (called once during init) */
+void set_history_display(const History *history);
+
 /* Draw board and stats. Both can be omitted if NULL is passed */
 void draw(const Board *board, const Stats *stats);
+
+/* Draw history info (undo/redo counts) */
+void draw_history_info(const History *history);
 
 /* Draw sliding animation. 'moves' must hold distance (positive int) for
  * each sliding tile and 0 for static and empty tiles */
