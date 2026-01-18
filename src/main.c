@@ -292,9 +292,6 @@ int main(void) {
     stats.points = board_slide(&board, &new_board, &moves, dir);
 
     if (stats.points >= 0) {
-      // Save state before making the move
-      history_save_state(&history, &board, &stats);
-
       draw(NULL, &stats); /* show +points */
       if (show_animations)
         draw_slide(&board, &moves, dir);
@@ -308,6 +305,9 @@ int main(void) {
       nanosleep(&addtile_time, NULL);
       board_add_tile(&board, false);
       draw(&board, NULL);
+      
+      // Save state after making the move
+      history_save_state(&history, &board, &stats);
       /* didn't slide, check if game's over */
     } else if (!board_can_slide(&board)) {
       stats.game_over = true;

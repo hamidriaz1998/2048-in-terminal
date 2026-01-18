@@ -39,11 +39,9 @@ static const struct timespec end_move_time = {.tv_sec = 0, .tv_nsec = 3000000};
 
 // Undo/Redo animation timing - much slower for visibility
 static const struct timespec undo_step_time = {
-    .tv_sec = 0, .tv_nsec = 200000000}; // 0.2 seconds per step
+    .tv_sec = 0, .tv_nsec = 150000000}; // 0.15 seconds per step
 static const struct timespec undo_pause_time = {
-    .tv_sec = 0, .tv_nsec = 400000000}; // 0.4 seconds between phases
-static const struct timespec undo_final_pause = {
-    .tv_sec = 0, .tv_nsec = 600000000}; // 0.6 seconds at end
+    .tv_sec = 0, .tv_nsec = 300000000}; // 0.3 seconds between phases
 
 static WINDOW *board_win;
 static WINDOW *stats_win;
@@ -166,7 +164,7 @@ static void draw_board(const Board *board) {
 static void draw_stats(const Stats *stats) {
   wattron(stats_win, COLOR_PAIR(2));
   mvwprintw(stats_win, 1, 1, "Score");
-  mvwprintw(stats_win, 4, 1, "Best Score");
+  mvwprintw(stats_win, 4, 1, "Best");
 
   if (stats->points > 0) {
     wattron(stats_win, COLOR_PAIR(3));
@@ -177,46 +175,54 @@ static void draw_stats(const Stats *stats) {
 
   if (!stats->auto_save) {
     wattron(stats_win, COLOR_PAIR(1));
-    mvwprintw(stats_win, 8, 1, "Autosave is");
+    mvwprintw(stats_win, 7, 1, "Autosave");
     wattron(stats_win, COLOR_PAIR(7));
-    mvwprintw(stats_win, 9, 9, "OFF");
+    mvwprintw(stats_win, 8, 3, "OFF");
   }
 
   wattron(stats_win, COLOR_PAIR(1));
   mvwprintw(stats_win, 2, 1, "%8d", stats->score);
   mvwprintw(stats_win, 5, 1, "%8d", stats->max_score);
-  mvwprintw(stats_win, 12, 2, "ndo");
-  mvwprintw(stats_win, 13, 2, "edo(");
-  mvwprintw(stats_win, 14, 2, "ave");
-  mvwprintw(stats_win, 15, 2, "oad(");
-  mvwprintw(stats_win, 16, 2, "nimations");
-  mvwprintw(stats_win, 17, 2, "estart");
-  mvwprintw(stats_win, 18, 2, "uit");
 
-  wattron(stats_win, COLOR_PAIR(4));
-  mvwaddch(stats_win, 12, 1, 'U');
+  // Keybindings section with cleaner layout
+  wattron(stats_win, COLOR_PAIR(1) | A_DIM);
+  mvwprintw(stats_win, 10, 1, "Keys:");
+  wattroff(stats_win, A_DIM);
 
-  wattron(stats_win, COLOR_PAIR(6));
-  mvwaddch(stats_win, 13, 1, 'R');
-  mvwaddch(stats_win, 13, 6, 'y');
-  mvwaddch(stats_win, 13, 7, ')');
+  wattron(stats_win, COLOR_PAIR(4) | A_BOLD);
+  mvwprintw(stats_win, 11, 1, "u");
+  wattron(stats_win, COLOR_PAIR(1));
+  mvwprintw(stats_win, 11, 3, "Undo");
 
-  wattron(stats_win, COLOR_PAIR(2));
-  mvwaddch(stats_win, 14, 1, 'S');
+  wattron(stats_win, COLOR_PAIR(3) | A_BOLD);
+  mvwprintw(stats_win, 12, 1, "U/y");
+  wattron(stats_win, COLOR_PAIR(1));
+  mvwprintw(stats_win, 12, 5, "Redo");
 
-  wattron(stats_win, COLOR_PAIR(3));
-  mvwaddch(stats_win, 15, 1, 'L');
-  mvwaddch(stats_win, 15, 5, 'G');
-  mvwaddch(stats_win, 15, 6, ')');
+  wattron(stats_win, COLOR_PAIR(2) | A_BOLD);
+  mvwprintw(stats_win, 13, 1, "s");
+  wattron(stats_win, COLOR_PAIR(1));
+  mvwprintw(stats_win, 13, 3, "Save");
 
-  wattron(stats_win, COLOR_PAIR(5));
-  mvwaddch(stats_win, 16, 1, 'A');
+  wattron(stats_win, COLOR_PAIR(3) | A_BOLD);
+  mvwprintw(stats_win, 14, 1, "g");
+  wattron(stats_win, COLOR_PAIR(1));
+  mvwprintw(stats_win, 14, 3, "Load");
 
-  wattron(stats_win, COLOR_PAIR(3));
-  mvwaddch(stats_win, 17, 1, 'R');
+  wattron(stats_win, COLOR_PAIR(5) | A_BOLD);
+  mvwprintw(stats_win, 15, 1, "a");
+  wattron(stats_win, COLOR_PAIR(1));
+  mvwprintw(stats_win, 15, 3, "Animate");
 
-  wattron(stats_win, COLOR_PAIR(7));
-  mvwaddch(stats_win, 18, 1, 'Q');
+  wattron(stats_win, COLOR_PAIR(6) | A_BOLD);
+  mvwprintw(stats_win, 16, 1, "r");
+  wattron(stats_win, COLOR_PAIR(1));
+  mvwprintw(stats_win, 16, 3, "Restart");
+
+  wattron(stats_win, COLOR_PAIR(7) | A_BOLD);
+  mvwprintw(stats_win, 17, 1, "q");
+  wattron(stats_win, COLOR_PAIR(1));
+  mvwprintw(stats_win, 17, 3, "Quit");
 }
 
 static void draw_tile(int top, int left, int val) {
@@ -375,27 +381,11 @@ void draw_undo_redo(const Board *from_board, const Board *to_board,
   if (!board_win)
     return;
 
-  // Show status message at start of animation
-  if (stats_win) {
-    wattron(stats_win, COLOR_PAIR(7) | A_BOLD);
-    mvwprintw(stats_win, 7, 1, "%-10s", is_undo ? "UNDO" : "REDO");
-    wattroff(stats_win, COLOR_PAIR(7) | A_BOLD);
-    wrefresh(stats_win);
-  }
+  // Choose color: blue for undo, green for redo
+  int color_pair = is_undo ? 4 : 3;
 
-  // Draw the starting state
-  for (int y = 0; y < from_board->size; y++) {
-    for (int x = 0; x < from_board->size; x++) {
-      int yc = y * TILE_HEIGHT + 1;
-      int xc = x * TILE_WIDTH + 1;
-      draw_tile(yc, xc, from_board->tiles[y][x]);
-    }
-  }
-  wrefresh(board_win);
-  nanosleep(&undo_pause_time, NULL);
-
-  // Create smooth transition by highlighting changed tiles
-  for (int step = 1; step <= 6; step++) {
+  // Step 1: Flash the old state in highlight color
+  for (int flash = 0; flash < 2; flash++) {
     for (int y = 0; y < from_board->size; y++) {
       for (int x = 0; x < from_board->size; x++) {
         int from_val = from_board->tiles[y][x];
@@ -403,76 +393,51 @@ void draw_undo_redo(const Board *from_board, const Board *to_board,
         int yc = y * TILE_HEIGHT + 1;
         int xc = x * TILE_WIDTH + 1;
 
-        if (from_val != to_val) {
-          if (step <= 3) {
-            // First half: highlight old value with increasing intensity
-            if (from_val != 0) {
-              NCURSES_ATTR_T attr;
-              if (is_undo) {
-                if (step == 1)
-                  attr = COLOR_PAIR(4) | A_BOLD;
-                else if (step == 2)
-                  attr = COLOR_PAIR(4) | A_BOLD | A_REVERSE;
-                else
-                  attr = COLOR_PAIR(4) | A_BOLD | A_BLINK;
-              } else {
-                if (step == 1)
-                  attr = COLOR_PAIR(3) | A_BOLD;
-                else if (step == 2)
-                  attr = COLOR_PAIR(3) | A_BOLD | A_REVERSE;
-                else
-                  attr = COLOR_PAIR(3) | A_BOLD | A_BLINK;
-              }
-              draw_tile_with_attr(yc, xc, from_val, attr);
-            } else {
-              draw_tile(yc, xc, 0);
-            }
-          } else {
-            // Second half: fade in new value with decreasing intensity
-            if (to_val != 0) {
-              NCURSES_ATTR_T attr;
-              if (is_undo) {
-                if (step == 4)
-                  attr = COLOR_PAIR(4) | A_BOLD | A_BLINK;
-                else if (step == 5)
-                  attr = COLOR_PAIR(4) | A_BOLD;
-                else
-                  attr = tile_attr[to_val];
-              } else {
-                if (step == 4)
-                  attr = COLOR_PAIR(3) | A_BOLD | A_BLINK;
-                else if (step == 5)
-                  attr = COLOR_PAIR(3) | A_BOLD;
-                else
-                  attr = tile_attr[to_val];
-              }
-              draw_tile_with_attr(yc, xc, to_val, attr);
-            } else {
-              draw_tile(yc, xc, 0);
-            }
-          }
+        if (from_val != to_val && from_val != 0) {
+          // Highlight changed tiles
+          draw_tile_with_attr(yc, xc, from_val, 
+                              COLOR_PAIR(color_pair) | A_BOLD | A_REVERSE);
         } else {
-          // Unchanged tile - draw normally with subtle dimming in middle steps
-          if (from_val != 0) {
-            NCURSES_ATTR_T attr = (step == 3 || step == 4)
-                                      ? (tile_attr[from_val] | A_DIM)
-                                      : tile_attr[from_val];
-            draw_tile_with_attr(yc, xc, from_val, attr);
-          } else {
-            draw_tile(yc, xc, 0);
-          }
+          draw_tile(yc, xc, from_val);
         }
       }
     }
     wrefresh(board_win);
-    if (step == 3) {
-      nanosleep(&undo_pause_time, NULL); // Longer pause between phases
-    } else {
-      nanosleep(&undo_step_time, NULL); // Standard step timing
+    nanosleep(&undo_step_time, NULL);
+
+    // Flash off
+    for (int y = 0; y < from_board->size; y++) {
+      for (int x = 0; x < from_board->size; x++) {
+        int yc = y * TILE_HEIGHT + 1;
+        int xc = x * TILE_WIDTH + 1;
+        draw_tile(yc, xc, from_board->tiles[y][x]);
+      }
     }
+    wrefresh(board_win);
+    nanosleep(&undo_step_time, NULL);
   }
 
-  // Final draw with normal attributes
+  // Step 2: Transition to new state with highlight
+  for (int y = 0; y < to_board->size; y++) {
+    for (int x = 0; x < to_board->size; x++) {
+      int from_val = from_board->tiles[y][x];
+      int to_val = to_board->tiles[y][x];
+      int yc = y * TILE_HEIGHT + 1;
+      int xc = x * TILE_WIDTH + 1;
+
+      if (from_val != to_val && to_val != 0) {
+        // Show new tiles in highlight color
+        draw_tile_with_attr(yc, xc, to_val, 
+                            COLOR_PAIR(color_pair) | A_BOLD);
+      } else {
+        draw_tile(yc, xc, to_val);
+      }
+    }
+  }
+  wrefresh(board_win);
+  nanosleep(&undo_pause_time, NULL);
+
+  // Step 3: Final state with normal colors
   for (int y = 0; y < to_board->size; y++) {
     for (int x = 0; x < to_board->size; x++) {
       int yc = y * TILE_HEIGHT + 1;
@@ -481,14 +446,6 @@ void draw_undo_redo(const Board *from_board, const Board *to_board,
     }
   }
   wrefresh(board_win);
-
-  // Clear status message after animation
-  if (stats_win) {
-    mvwprintw(stats_win, 7, 1, "          ");
-    wrefresh(stats_win);
-  }
-
-  nanosleep(&undo_final_pause, NULL); // Final pause to appreciate the result
 }
 
 void draw_undo_redo_status(const char *action) {
